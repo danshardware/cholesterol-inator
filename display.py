@@ -64,13 +64,21 @@ class Display:
     def __init__(self):
         # Setup the pins to not output anything
         self.ledA = Pin(21, Pin.IN)
-        self.ledB = Pin(26, Pin.IN)
+        # self.ledB = Pin(26, Pin.IN)
         self.ledC = Pin(17, Pin.IN)
         self.ledD = Pin(19, Pin.IN)
         self.ledE = Pin(20, Pin.IN)
         self.ledF = Pin(22, Pin.IN)
         self.ledG = Pin(16, Pin.IN)
         self.ledP = Pin(18, Pin.IN)
+        # self.ledA = Pin(5, Pin.IN)
+        self.ledB = Pin(5, Pin.IN)
+        # self.ledC = Pin(5, Pin.IN)
+        # self.ledD = Pin(5, Pin.IN)
+        # self.ledE = Pin(5, Pin.IN)
+        # self.ledF = Pin(5, Pin.IN)
+        # self.ledG = Pin(5, Pin.IN)
+        # self.ledP = Pin(5, Pin.IN)
         self.ledSegments = [self.ledA, self.ledB, self.ledC, self.ledD, self.ledE, self.ledF, self.ledG, self.ledP]
 
         # Digits
@@ -87,6 +95,9 @@ class Display:
             return characterLUT[index]
         
         return 0x0
+    
+    def isStarting(self): 
+        return self.__stateDisplay == 0 and self.__stateDigit == 0
     
     def nextDigit(self):
         # advance to the next digit
@@ -117,14 +128,14 @@ class Display:
             # Lookup the digit
             # print("stateDigit - {}, SV - _{}_".format(self.__stateDigit, self.__SV))
             counter = 0
-            calcOut = []
+            # calcOut = []
             for segment in self.ledSegments:
                 value = 1 if bitmap & (1 << counter) > 0 else 0
                 pinState = Pin.OUT if value == 1 else Pin.IN
-                pinPull = None if value == 1 else Pin.PULL_DOWN
+                # pinPull = None if value == 1 else Pin.PULL_DOWN
                 pinPull= None
                 # pinState = Pin.OUT
-                calcOut.append(pinState)
+                # calcOut.append(pinState)
                 segment.init(mode=pinState, value=value, pull=pinPull)
                 counter += 1
         else:
@@ -145,13 +156,15 @@ class Display:
             for segment in self.ledSegments:
                 value = 0 if bitmap & (1 << counter) > 0 else 1
                 pinState = Pin.OUT if value == 0 else Pin.IN
-                pinPull = None if value == 1 else Pin.PULL_UP
+                # pinPull = None if value == 1 else Pin.PULL_UP
                 pinPull= None
                 segment.init(mode=pinState, value=value, pull=pinPull)
                 counter += 1
             
     def off(self):
         self.ledDE.low()
+        for segment in self.ledSegments:
+            segment.init(mode=Pin.IN, value=0)
     
     def setSV(self, value : str | int):
         # ensure the value has 3 or fewer characters, or is less than 999
