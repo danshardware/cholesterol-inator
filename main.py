@@ -152,15 +152,17 @@ async def main():
 state.display.setPV("---")
 state.display.setSV("001")
 startTime = ticks_ms()
-state.beeper.duty_u16(32768)
+state.beepOn()
 sleep_ms(100)
-state.beeper.duty_u16(0)
+state.beepOff()
 
 while ticks_ms() - startTime < 2000:
     state.display.nextDigit()
     sleep_ms(1)
 
 state.display.off()
+state.display.setSV("235")
+state.display.setPV("---")
 
 # Run the Event Loop
 try:

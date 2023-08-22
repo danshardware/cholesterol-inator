@@ -15,7 +15,7 @@ clamp = lambda n, minn, maxn: max(min(maxn, n), minn)
   D ->>  --- .  <<- P
 
   A -> 1, B -> 2, C -> 4, D -> 8
-  E -> 16, F -> 32, G -> 64, P -> 128
+  E -> 16 0x10, F -> 32 0x20, G -> 64 0x40, P -> 128 0x80
  """
 MAX_DIGITS = 0x3 # number of digits per display
 
@@ -38,7 +38,7 @@ characterLUT = {
     "7": 0x07,
     "8": 0x7f,
     "9": 0x6f,
-    "a": 0x0,
+    "a": 0x77,
     "b": 0x0,
     "c": 0x0,
     "d": 0x0,
@@ -46,6 +46,7 @@ characterLUT = {
     "f": 0x0,
     "l": 0x30,
     "o": 0b01011100,
+    "-": 0x40
 }
 
 # OMG, this is inefficient
