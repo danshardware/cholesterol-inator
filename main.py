@@ -1,5 +1,5 @@
-from machine import Pin, ADC
-from time import ticks_ms
+from machine import Pin, ADC, PWM
+from time import ticks_ms, sleep_ms 
 from display import Display
 from rotary_irq_rp2 import RotaryIRQ
 import uasyncio as asyncio
@@ -16,6 +16,14 @@ class fryerState:
     # Board LED
     led = Pin("LED", Pin.OUT)
 
+    # Relay
+    p6 = Pin(6)
+    relay = PWM(p6)
+
+    # Relay
+    p4 = Pin(4)
+    beeper = PWM(p4)
+
     # Knob
     knob = RotaryIRQ(pin_num_clk=7,
                 pin_num_dt=8,
@@ -30,14 +38,14 @@ class fryerState:
 
     def __init__(self):
         # some pin initializastion
-        Pin(21, Pin.IN)
+        # Pin(21, Pin.IN)
         Pin(26, Pin.IN)
-        Pin(17, Pin.IN)
-        Pin(19, Pin.IN)
-        Pin(20, Pin.IN)
-        Pin(22, Pin.IN)
-        Pin(16, Pin.IN)
-        Pin(18, Pin.IN)
+        # Pin(17, Pin.IN)
+        # Pin(19, Pin.IN)
+        # Pin(20, Pin.IN)
+        # Pin(22, Pin.IN)
+        # Pin(16, Pin.IN)
+        # Pin(18, Pin.IN)
         self.display.setSV(int(self.knob.value())*5)
         self.display.setPV("lo")
         # self.display.nextDigit()
@@ -45,6 +53,26 @@ class fryerState:
         self.setValueOld = int(self.knob.value())
         self.setValueNew = self.setValueOld
         self.lowPower.high()
+
+        self.relay.freq(500)
+        self.relay.duty_u16(0)
+
+    def relayOn(self):
+        self.relay.duty_u16(32768)
+    
+    def relayOff(self):
+        self.relay.duty_u16(0)
+    
+    def beepOn(self):
+        self.beeper.duty_u16(32768)
+    
+    def beepOff(self):
+        self.beeper.duty_u16(0)
+
+    async def beep(self):
+        self.beepOn()
+        await asyncio.sleep_ms(75)
+        self.beepOff()
 
 state = fryerState()
 
@@ -65,9 +93,7 @@ async def ui(s: fryerState):
         # if s.display.isStarting() and ticks_ms() - lastCheck > 5000:
         if ticks_ms() - lastCheck > 5000:
             lastCheck = ticks_ms()
-            # s.display.off()
-            # s.display.ledB.low()
-            await asyncio.sleep_ms(200)
+            s.display.off()
             await regulate(s, 0)
             
 
@@ -113,15 +139,31 @@ async def main():
 
     # insert coros into queue!
     uiTask = asyncio.create_task(ui(state))
-    # regulateTask = asyncio.create_task(regulate(state))
     knobTask = asyncio.create_task(knobHandler(state))
 
     while True: # run forever
         await asyncio.sleep_ms(1000)
 
+########################
+# Startup
+########################
+
+# display fw version
+state.display.setPV("---")
+state.display.setSV("001")
+startTime = ticks_ms()
+state.beeper.duty_u16(32768)
+sleep_ms(100)
+state.beeper.duty_u16(0)
+
+while ticks_ms() - startTime < 2000:
+    state.display.nextDigit()
+    sleep_ms(1)
+
+state.display.off()
+
 # Run the Event Loop
 try:
-    # display.nextDigit()
     asyncio.run(main())
 except KeyboardInterrupt: 
     print("Keyboard Interrupted")
