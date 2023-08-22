@@ -2,13 +2,13 @@
 
 ## TO DO
 
-- Knowb input - async
-- Display loop async
-- Temp input
-- Relay Output
+- Temp input to degrees conversion
+- Relay Output testing
 - PID/bang-bang loop
-- beeper
-
+- Power on/off cycle
+- calibration
 ## Issues
+
+## Issues we're not fixing for this version
 
 - LEDs have a lot of ghosting. Maybe figure out how to lessen that.
