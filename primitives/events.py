@@ -4,7 +4,7 @@
 # Released under the MIT License (MIT) - see LICENSE file
 
 import uasyncio as asyncio
-from delay_ms import Delay_ms
+from . import Delay_ms
 
 # An Event-like class that can wait on an iterable of Event-like instances.
 # .wait pauses until any passed event is set.

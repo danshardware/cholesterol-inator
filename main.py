@@ -1,9 +1,10 @@
 from machine import Pin, ADC, PWM
-from time import ticks_ms, sleep_ms 
+from time import ticks_ms, sleep_ms
+import math 
 from display import Display
 from rotary_irq_rp2 import RotaryIRQ
 import uasyncio as asyncio
-from events import EButton
+from primitives import EButton
 from control import TempController
 class fryerState:
     # ADC
@@ -31,10 +32,10 @@ class fryerState:
     # Knob
     knob = RotaryIRQ(pin_num_clk=7,
                 pin_num_dt=8,
-                min_val=int(27),
-                max_val=80,
+                min_val=int(140/5),
+                max_val=int(375/5),
                 reverse=False,
-                range_mode=RotaryIRQ.RANGE_WRAP)
+                range_mode=RotaryIRQ.RANGE_BOUNDED)
     rotaryEvent = asyncio.Event()
 
     # Display
@@ -53,7 +54,7 @@ class fryerState:
         self.setValueNew = self.setValueOld
         # self.lowPower.high()
 
-        self.relay.freq(500)
+        self.relay.freq(1000)
         self.relay.duty_u16(0)
 
     def relayOn(self):
@@ -72,6 +73,11 @@ class fryerState:
         self.beepOn()
         await asyncio.sleep_ms(75)
         self.beepOff()
+
+    async def alert(self):
+        for c in range(3):
+            await self.beep()
+            await asyncio.sleep_ms(50)
     
     def off(self):
         self.beepOff()
@@ -79,6 +85,8 @@ class fryerState:
         self.display.off()
         self.display.setSV(int(self.knob.value())*5)
         self.display.setPV("lo")
+        self.knobLedBlue.low()
+        self.knobLedOrange.low()
 
 state = fryerState()
 
@@ -88,9 +96,9 @@ def knobCallback():
 state.knob.add_listener(knobCallback)
 
 def samplesToTemp(v):
-    i = 0.000019    # Current source
+    i = 0.000036    # Current source
     # Tx = 25         # Reference temp
-    # Rtx = 250000.0  # Resistance at reference temp
+    # Rtx = 250000.0  # Resistance at reference tempi9i9i9
     CMax = 65535.0  # Max ADC Counts
     # alpha = .044    # delta R per degree C
     Vref = 2.5      # Reference Voltage
@@ -98,12 +106,11 @@ def samplesToTemp(v):
     # return 
 
     # Calculated Steinhart-Hart model coefficients (https://www.thinksrs.com/downloads/programs/therm%20calc/ntccalibrator/ntccalculator.html)
-    A = 0.1790245987e-3
-    B = 2.552951367e-4
-    C = 0.01023586011e-7
-    R = Vref * (v/Cmax) / i # =VRef * (I2/65535) / Current
-
-    return A + B * math.log(R) + C * math.log(R) ** 3
+    A = 1.451371111e-3
+    B = 0.6977565024e-4
+    C = 6.210453074e-7
+    R = Vref * (v/CMax) / i # =VRef * (I2/65535) / Current
+    return 1/(A + B * math.log(R) + C * math.log(R) ** 3) + Taz
 
 
 ########################
@@ -117,14 +124,28 @@ async def ui(s: fryerState):
             
 async def regulate(s: fryerState):
     controller = TempController()
+    alerted = False
     while True:
         oversample = 0
         for counter in range(8):
             oversample += s.adc.read_u16()/8
         currentTemp = samplesToTemp(oversample)
-        print(oversample, " ", currentTemp)
+
+        # Check for out of bounds reading
+        if oversample < 500:
+            s.relayOff()
+            await s.alert()
+            print ("[ERROR] Reading is too low to use. Turning off.")
+            s.display.setPV("---")
+            s.display.setSV("---")
+            await asyncio.sleep_ms(2000)
+            raise Exception("Temp out of range")
         tempInF = currentTemp * (9/5) + 32
-        s.display.setPV(int(tempInF))
+        print("PV: {}, SV: {}, Raw Reading: {}".format(tempInF, s.setValueNew, oversample))
+        if tempInF < 140:
+            s.display.setPV(" lo")
+        else:
+            s.display.setPV(int(tempInF))
         dutyCycle = controller.getDemand(s.setValueNew, tempInF)
         if controller.inRange(s.setValueNew, tempInF):
             s.knobLedOrange.high()
@@ -132,6 +153,11 @@ async def regulate(s: fryerState):
         else :
             s.knobLedBlue.high()
             s.knobLedOrange.low()
+
+        if not alerted and tempInF >= s.setValueNew:
+            await s.alert()
+            alerted = True
+        
         onTime = int(dutyCycle * s.loopMs)
         if onTime < 500:
             onTime = 0
@@ -152,11 +178,11 @@ async def regulate(s: fryerState):
 async def knobHandler(s: fryerState):
     while True:
         await s.rotaryEvent.wait()
-        s.setValueNew = int(s.knob.value())
+        s.setValueNew = int(s.knob.value() * 5)
 
         if s.setValueNew != s.setValueOld:
             s.setValueOld = s.setValueNew
-            s.display.setSV(s.setValueNew * 5)
+            s.display.setSV(s.setValueNew)
 
         s.rotaryEvent.clear()
 
@@ -171,6 +197,7 @@ def set_global_exception(s: fryerState):
         import sys
         sys.print_exception(context["exception"])
         s.off()
+        asyncio.new_event_loop()
         s.beepOn()
         sleep_ms(200)
         s.beepOff()
@@ -186,6 +213,8 @@ async def main(s: fryerState):
     while True:
         # system is off
         await s.knobButton.press.wait()
+        print("Powering up...")
+        s.knobButton.press.clear()
         await s.beep()
 
         # system is on
@@ -196,12 +225,15 @@ async def main(s: fryerState):
 
         # Turn off when we get a long press
         await s.knobButton.long.wait()
+        print("Powering Down...")
         s.off()
-        asyncio.cancel_task(uiTask)
-        asyncio.cancel_task(knobTask)
-        asyncio.cancel_task(regulateTask)
+        uiTask.cancel()
+        knobTask.cancel()
+        regulateTask.cancel()
         await s.beep()
         await asyncio.sleep_ms(2000)
+        s.knobButton.long.clear()
+        s.knobButton.press.clear()
 
 
 
@@ -227,6 +259,7 @@ state.off()
 try:
     asyncio.run(main(state))
 except KeyboardInterrupt: 
+    state.off()
     print("Keyboard Interrupted")
 except asyncio.TimeoutError: 
     print("Timed out")
